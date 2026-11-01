@@ -1,0 +1,86 @@
+name: egytronic-pos
+
+services:
+  db:
+    image: mariadb:10.5
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set in .env}
+      MYSQL_DATABASE: ospos
+      MYSQL_USER: ospos
+      MYSQL_PASSWORD: ${DB_PASSWORD:?set in .env}
+      TZ: ${TZ:-Africa/Cairo}
+    volumes:
+      - db:/var/lib/mysql
+      - ./database/database.sql:/docker-entrypoint-initdb.d/database.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD']
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [internal]
+
+  app:
+    image: jekkos/opensourcepos:3.3.9
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      CI_ENV: production
+      FORCE_HTTPS: 'true'
+      PHP_TIMEZONE: ${TZ:-Africa/Cairo}
+      MYSQL_USERNAME: ospos
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DB_NAME: ospos
+      MYSQL_HOST_NAME: db
+    volumes:
+      - uploads:/app/public/uploads
+      - logs:/app/application/logs
+    networks: [internal]
+
+  caddy:
+    image: caddy:2
+    restart: always
+    depends_on: [app]
+    ports:
+      - '80:80'
+      - '443:443'
+    environment:
+      DOMAIN: ${DOMAIN:?set in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [internal]
+
+  backup:
+    image: mariadb:10.5
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - ./backups:/backups
+    networks: [internal]
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        while true; do
+          mysqldump -h db -uroot -p$$MYSQL_ROOT_PASSWORD --single-transaction ospos | gzip > /backups/ospos-$$(date +%F).sql.gz
+          find /backups -name '*.sql.gz' -mtime +14 -delete
+          sleep 86400
+        done
+
+volumes:
+  db:
+  uploads:
+  logs:
+  caddy_data:
+  caddy_config:
+
+networks:
+  internal:
