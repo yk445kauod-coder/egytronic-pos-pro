@@ -1,0 +1,1 @@
+{"name":"Egytronic POS Pro","image":"mcr.microsoft.com/devcontainers/base:ubuntu","features":{"ghcr.io/devcontainers/features/docker-in-docker:2":{}},"postStartCommand":"docker compose up -d --build","forwardPorts":[80],"portsAttributes":{"80":{"label":"Egytronic POS","onAutoForward":"openBrowser"}}}
